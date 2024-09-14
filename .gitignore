@@ -1,0 +1,9 @@
+.locks
+datasets--cerebras--SlimPajama-627B
+datasets--hoskinson-center--proof-pile
+
+# virtual environment
+privateVenv
+
+# environment variable
+.env
