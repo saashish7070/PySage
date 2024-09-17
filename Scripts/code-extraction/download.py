@@ -1,9 +1,9 @@
 import os
-from datasets import load_dataset
 from dotenv import load_dotenv
 import boto3
 from smart_open import open
 
+output_dir = './python-dataset'
 load_dotenv()
 
 
@@ -22,16 +22,3 @@ def download_contents(files):
             file['content'] = fin.read().decode(file['src_encoding'])
     
     return {"files": files}
-
-# load the ids of the file
-ds = load_dataset("bigcode/the-stack-v2-train-smol-ids", streaming=True, split="train")
-
-# map the rows ( each rows consists of files ) to the file ids of the repo
-ds = ds.map( lambda row: download_contents(row['files']))
-
-
-# print the files
-for row in ds:
-    for file in row['files']:
-        print(file['content'])
-    break
