@@ -1,6 +1,7 @@
 .locks
 # English Corpus
 datasets--cerebras--SlimPajama-627B
+english
 
 # Math Corpus
 datasets--hoskinson-center--proof-pile
@@ -8,10 +9,12 @@ datasets--hoskinson-center--proof-pile
 # Python Corpus
 python-dataset
 new-python-dataset
+
+
 # caches
 __pycache__
 # virtual environment
-privateVenv
+myvenv
 
 # environment variable
 .env
