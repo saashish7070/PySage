@@ -7,7 +7,7 @@ from transformers import PreTrainedModel, PretrainedConfig
 # standard value #######
 vocab_size=20256
 batch_size=1
-seq_len=10
+seq_len=1024
 d_model=1024
 n_layers=12
 d_ff=2732
@@ -15,13 +15,14 @@ n_heads=16
 ######################
 
 class ModelConfig(PretrainedConfig):
-    def __init__(self, vocab_size=20256, d_model=1024, n_layers=12, d_ff=2732, n_heads=16, **kwargs):
-        super().__init__(**kwargs)
-        self.vocab_size = vocab_size
-        self.d_model = d_model
-        self.n_layers = n_layers
-        self.d_ff = d_ff
-        self.n_heads = n_heads
+  def __init__(self, vocab_size=20256, d_model=1024, max_seq_len=seq_len, n_layers=12, d_ff=2732, n_heads=16, **kwargs):
+      super().__init__(**kwargs)
+      self.vocab_size = vocab_size
+      self.d_model = d_model
+      self.n_layers = n_layers
+      self.d_ff = d_ff
+      self.n_heads = n_heads
+      self.max_seq_len=max_seq_len
 
 class LinearScalingRotaryEmbedding(nn.Module):
   def __init__(self, dim, base=10000): # dim -> head_size
@@ -59,14 +60,14 @@ class LinearScalingRotaryEmbedding(nn.Module):
     return torch.cat((-x2, x1), dim=-1) # (batch_size, num_heads, seq_len, head_size)
 
 class RMSNorm(nn.Module):
-    def __init__(self, d_model, eps=1e-6):
-        super().__init__()
-        self.eps = eps
-        self.weight = nn.Parameter(torch.ones(d_model))
+  def __init__(self, d_model, eps=1e-6):
+      super().__init__()
+      self.eps = eps
+      self.weight = nn.Parameter(torch.ones(d_model))
 
-    def forward(self, x):
-        norm = x.norm(keepdim=True, dim=-1, p=2)  # RMS norm over last dimension
-        return self.weight * (x / (norm + self.eps))
+  def forward(self, x):
+      norm = x.norm(keepdim=True, dim=-1, p=2)  # RMS norm over last dimension
+      return self.weight * (x / (norm + self.eps))
 
 class SelfAttention(nn.Module):
   def __init__(self, config):
@@ -82,34 +83,39 @@ class SelfAttention(nn.Module):
     self.out = nn.Linear(self.all_head_size, config.d_model) # (d_model, d_model)
     self.rotary_emb = LinearScalingRotaryEmbedding(self.attention_head_size)
 
+    self.register_buffer('tril', torch.tril(torch.ones(config.max_seq_len, config.max_seq_len)))
+
   def transpose_for_scores(self, x): # x -> (batch_size, seq_len, d_model)
     new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size) # (batch_size, seq_len, n_heads, head_size)
     x = x.view(*new_x_shape)
     return x.permute(0, 2, 1, 3) # (batch_size, n_heads, seq_len, head_size)
 
   def forward(self, hidden_states, attention_mask=None): # hidden_states -> (batch_size, seq_len, d_model)
-    mixed_query_layer = self.query(hidden_states) # (batch_size, seq_len, d_model)
-    mixed_key_layer = self.key(hidden_states) # (batch_size, seq_len, d_model)
-    mixed_value_layer = self.value(hidden_states) # (batch_size, seq_len, d_model)
+    B, T, C = hidden_states.shape # B -> Batch size, T -> Seq Len, C -> d_model
+    mixed_query_layer = self.query(hidden_states) # (B, T, C)
+    mixed_key_layer = self.key(hidden_states) # (B, T, C)
+    mixed_value_layer = self.value(hidden_states) # (B, T, C)
 
-    query_layer = self.transpose_for_scores(mixed_query_layer) # (batch_size, n_heads, seq_len, head_size)
-    key_layer = self.transpose_for_scores(mixed_key_layer) # (batch_size, n_heads, seq_len, head_size)
-    value_layer = self.transpose_for_scores(mixed_value_layer) # (batch_size, n_heads, seq_len, head_size)
+    query_layer = self.transpose_for_scores(mixed_query_layer) # (B, T, C, head_size)
+    key_layer = self.transpose_for_scores(mixed_key_layer) # (B, n_heads, T, head_size)
+    value_layer = self.transpose_for_scores(mixed_value_layer) # (B, n_heads, T, head_size)
 
     # Apply rotary embeddings
-    sin, cos = self.rotary_emb(query_layer) # (seq_len, head_size)
-    query_layer, key_layer = self.rotary_emb.apply_rotary_pos_emb(query_layer, key_layer, sin, cos) # (batch_size, n_heads, seq_len, head_size)
+    sin, cos = self.rotary_emb(query_layer) # (T, head_size)
+    query_layer, key_layer = self.rotary_emb.apply_rotary_pos_emb(query_layer, key_layer, sin, cos) # (B, n_heads, T, head_size)
 
-    attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2)) # (batch_size, n_heads, seq_len, seq_len)
-    attention_scores = attention_scores / math.sqrt(self.attention_head_size) # (batch_size, n_heads, seq_len, seq_len)
-    
-    # Apply attention mask
+    attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2)) # (B, n_heads, T, T)
+    attention_scores = attention_scores / math.sqrt(self.attention_head_size) # (B, n_heads, T, T)
+
     if attention_mask is not None:
-       # Expand attention mask to match the shape of attention scores
-      attention_mask=attention_mask.unsqueeze(1).unsqueeze(2)
-      attention_mask = (1.0 - attention_mask) * -10000.0
-      attention_mask=attention_scores + attention_mask
-    
+      attention_mask = attention_mask.unsqueeze(1).unsqueeze(2) # (B, 1, 1, T)
+      attention_mask = (1.0 - attention_mask) * -10000.0  # (B, 1, 1, T)
+      attention_scores = attention_scores + attention_mask # (B, n_heads, T, T)
+
+    causal_mask = self.tril[:T, :T] # (T, T)
+    causal_mask = causal_mask.unsqueeze(0).unsqueeze(0) # (1, 1, T, T)
+    attention_scores = attention_scores.masked_fill(causal_mask == 0, float('-inf'))
+
     attention_probs = nn.Softmax(dim=-1)(attention_scores) # (batch_size, n_heads, seq_len, seq_len)
 
     context_layer = torch.matmul(attention_probs, value_layer) # (batch_size, n_heads, seq_len, head_size)
@@ -158,9 +164,10 @@ class Model(PreTrainedModel):
     self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False) # ( d_model, vocab_size)
 
   def forward(self, input_ids, attention_mask=None): # input_ids -> (batch_size, seq_len)
+    B, T = input_ids.shape  # B -> Batch size, T -> Seq Len
     hidden_states = self.embedding(input_ids) # (batch_size, seq_len, d_model)
     for layer in self.layers:
-        hidden_states = layer(hidden_states) # (batch_size, seq_len, d_model)
+        hidden_states = layer(hidden_states, attention_mask) # (batch_size, seq_len, d_model)
     hidden_states = self.final_layer_norm(hidden_states) # (batch_size, seq_len, d_model)
     logits = self.lm_head(hidden_states) # (batch_size, seq_len, vocab_size)
     return logits
@@ -168,8 +175,8 @@ class Model(PreTrainedModel):
 # Example usage
 
 
-# config = ModelConfig()
-# model = Model(config)
-# input_ids = torch.randint(0, config.vocab_size, (3, 1024))  # Batch size of 1, sequence length of 10
-# logits = model(input_ids)
-# print(logits.shape)  # Should be (1, 10, config.vocab_size)
+config = ModelConfig()
+model = Model(config)
+input_ids = torch.randint(0, config.vocab_size, (3, 10))  # Batch size of 1, sequence length of 10
+logits = model(input_ids)
+print(logits.shape)  # Should be (1, 10, config.vocab_size)
