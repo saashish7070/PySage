@@ -87,7 +87,7 @@ class SelfAttention(nn.Module):
     x = x.view(*new_x_shape)
     return x.permute(0, 2, 1, 3) # (batch_size, n_heads, seq_len, head_size)
 
-  def forward(self, hidden_states): # hidden_states -> (batch_size, seq_len, d_model)
+  def forward(self, hidden_states, attention_mask=None): # hidden_states -> (batch_size, seq_len, d_model)
     mixed_query_layer = self.query(hidden_states) # (batch_size, seq_len, d_model)
     mixed_key_layer = self.key(hidden_states) # (batch_size, seq_len, d_model)
     mixed_value_layer = self.value(hidden_states) # (batch_size, seq_len, d_model)
@@ -102,6 +102,14 @@ class SelfAttention(nn.Module):
 
     attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2)) # (batch_size, n_heads, seq_len, seq_len)
     attention_scores = attention_scores / math.sqrt(self.attention_head_size) # (batch_size, n_heads, seq_len, seq_len)
+    
+    # Apply attention mask
+    if attention_mask is not None:
+       # Expand attention mask to match the shape of attention scores
+      attention_mask=attention_mask.unsqueeze(1).unsqueeze(2)
+      attention_mask = (1.0 - attention_mask) * -10000.0
+      attention_mask=attention_scores + attention_mask
+    
     attention_probs = nn.Softmax(dim=-1)(attention_scores) # (batch_size, n_heads, seq_len, seq_len)
 
     context_layer = torch.matmul(attention_probs, value_layer) # (batch_size, n_heads, seq_len, head_size)
@@ -133,9 +141,9 @@ class Layer(nn.Module):
     self.norm = RMSNorm(config.d_model)
 
 
-  def forward(self, hidden_states): # hidden_states -> (batch_size, seq_len, d_model)
+  def forward(self, hidden_states, attention_mask=None): # hidden_states -> (batch_size, seq_len, d_model)
     normed_hidden_states = self.norm(hidden_states)
-    attention_output = self.attention(normed_hidden_states) # (batch_size, seq_len, d_model)
+    attention_output = self.attention(normed_hidden_states, attention_mask) # (batch_size, seq_len, d_model)
     hidden_states = self.norm(hidden_states + attention_output) # (batch_size, seq_len, d_model)
     feed_forward_output = self.feed_forward(hidden_states) # (batch_size, seq_len, d_model)
 
@@ -149,7 +157,7 @@ class Model(PreTrainedModel):
     self.final_layer_norm = RMSNorm(config.d_model)
     self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False) # ( d_model, vocab_size)
 
-  def forward(self, input_ids): # input_ids -> (batch_size, seq_len)
+  def forward(self, input_ids, attention_mask=None): # input_ids -> (batch_size, seq_len)
     hidden_states = self.embedding(input_ids) # (batch_size, seq_len, d_model)
     for layer in self.layers:
         hidden_states = layer(hidden_states) # (batch_size, seq_len, d_model)

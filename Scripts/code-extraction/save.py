@@ -1,3 +1,4 @@
+import os
 from datasets import load_dataset
 from smart_open import open
 import json
@@ -5,8 +6,8 @@ from datetime import datetime
 # local imoport
 from download import download_contents
 
-output_dir = './python-dataset'
-MAX_LIMIT = 10
+output_dir = './new-python-dataset'
+MAX_LIMIT = 1000
 '''
 Directory Meta Data
 <START_DIR_METADATA>
@@ -66,8 +67,12 @@ File Meta Data
 # load the ids of the file
 ds = load_dataset("bigcode/the-stack-v2-train-smol-ids", streaming=True, split="train")
 
+# supported files
+supported_languages = ['Python']
+language_count = {language: 0 for language in supported_languages}
+
 # only keep python files
-ds.filter(lambda row: row['gh_language'] == 'Python')
+ds = ds.filter(lambda row: row['gha_language'] in supported_languages)
 
 def serialize_data(row):
     serialized_row = {}
@@ -80,19 +85,59 @@ def serialize_data(row):
     return serialized_row
 
 for i, row in enumerate(ds):
+    
+    # increase the count
+    language_count[row['gha_language']] += 1
 
     # remove the "files" key from the metadata as individiual file will have it
-    content = download_contents(row['files'])
+    content = download_contents(row['files'], supported_languages)
 
-    repo_name = row['repo_name'].split('/')[-1]
-    print(repo_name)
-    # for key, value in row.items():
-    #     print(f"{key}: {type(value)}")
+    repo_name = row['repo_name'].replace('/', '_')
+
+
+    if os.path.exists(f"{output_dir}/{repo_name}.json"):
+        print(f"{output_dir}/{repo_name}.json skipped")
+        continue
     with open(f"{output_dir}/{repo_name}.json", 'w') as f:
         
         row['files'] = content['files']
         string_data = json.dumps(serialize_data(row))
         f.write(string_data)
     
-    if i == MAX_LIMIT:
+    if language_count[row['gha_language']] > MAX_LIMIT:
         break
+
+
+
+
+
+
+
+
+
+
+
+
+# for teaching aashish only 
+
+# for i, row in enumerate(ds):
+#     print(row['gha_language'])
+#     # if i == 0 or row['gha_language'] != 'Python':
+#     #     continue
+#     if i == MAX_LIMIT:
+#         break
+#     continue
+#     # remove the "files" key from the metadata as individiual file will have it
+#     files = download_contents(row['files'])['files']
+
+#     # for key, value in row.items():
+#     #     print(f"{key}: {type(value)}")
+#     with open(f"code.txt", 'a') as f:
+#         for file in files:
+
+#             code_content = "<file_sep>\n"+ file['content'] + "<|endoftext|>"
+#             # string_data = json.dumps(code_content)
+#             f.write(code_content)
+    
+#     if i == MAX_LIMIT:
+#         break
