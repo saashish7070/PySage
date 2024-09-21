@@ -4,25 +4,25 @@ import torch
 import torch.nn as nn
 from transformers import PreTrainedModel, PretrainedConfig
 
-# standard value #######
+# Hyperparameters value #######
 vocab_size=20256
-batch_size=1
-seq_len=1024
-d_model=1024
+batch_size=8
+seq_len=512
+d_model=768
 n_layers=12
-d_ff=2732
+d_ff=d_model * 8 // 3
 n_heads=16
 ######################
 
 class ModelConfig(PretrainedConfig):
-  def __init__(self, vocab_size=20256, d_model=1024, max_seq_len=seq_len, n_layers=12, d_ff=2732, n_heads=16, **kwargs):
-      super().__init__(**kwargs)
-      self.vocab_size = vocab_size
-      self.d_model = d_model
-      self.n_layers = n_layers
-      self.d_ff = d_ff
-      self.n_heads = n_heads
-      self.max_seq_len=max_seq_len
+  def __init__(self, vocab_size=vocab_size, d_model=d_model, max_seq_len=seq_len, n_layers=n_layers, d_ff=d_ff, n_heads=n_heads, **kwargs):
+    super().__init__(**kwargs)
+    self.vocab_size = vocab_size
+    self.d_model = d_model
+    self.n_layers = n_layers
+    self.d_ff = d_ff
+    self.n_heads = n_heads
+    self.max_seq_len=max_seq_len
 
 class LinearScalingRotaryEmbedding(nn.Module):
   def __init__(self, dim, base=10000): # dim -> head_size

@@ -6,11 +6,11 @@ from datetime import datetime
 # local imoport
 from download import download_contents
 
-output_dir = './new-python-dataset'
-MAX_LIMIT = 1000
+output_dir = './test'
+MAX_LIMIT = 2
+
 '''
 Directory Meta Data
-<START_DIR_METADATA>
 {
   "repo_name": "shuishen112/pairwise-rnn",
   "repo_url": "https://github.com/shuishen112/pairwise-rnn",
@@ -32,14 +32,10 @@ Directory Meta Data
   "files": [ <File Meta DATA> ],
   "num_files": 8
 }
-
-<END_DIR_METADATA>
 '''
 
 '''
 File Meta Data
-
-<START_FILE_METADATA>
 {
 "blob_id": "79802139049c977df9d56776869280cf0baf4d03",
 "path": "/README.md",
@@ -57,8 +53,6 @@ File Meta Data
 "avg_line_length": 11.5,
 "max_line_length": 40
 }
-<END_FILE_METADATA>
-
 '''
 
 
@@ -74,70 +68,33 @@ language_count = {language: 0 for language in supported_languages}
 # only keep python files
 ds = ds.filter(lambda row: row['gha_language'] in supported_languages)
 
-def serialize_data(row):
-    serialized_row = {}
-    for key, value in row.items():
-        if isinstance(value, datetime):
-            serialized_row[key] = value.isoformat()
-        else:
-            serialized_row[key] = value
-
-    return serialized_row
-
+# code_files = set(os.listdir(output_dir))
+f = open(os.path.join(output_dir, "code.jsonl"), 'a')
 for i, row in enumerate(ds):
+    
+    # convert repo_name to file
+    print(i, row['repo_name'])
     
     # increase the count
     language_count[row['gha_language']] += 1
 
+    row["visit_date"] = row["visit_date"].isoformat()
+    row["revision_date"] = row["revision_date"].isoformat()
+    row["committer_date"] = row["committer_date"].isoformat()
+
+    row["gha_created_at"] = row["gha_created_at"].isoformat() if row["gha_created_at"] else ""
+    row["gha_updated_at"] = row["gha_updated_at"].isoformat() if row["gha_updated_at"] else ""
+    row["gha_pushed_at"] = row["gha_pushed_at"].isoformat() if row["gha_pushed_at"] else ""
+
     # remove the "files" key from the metadata as individiual file will have it
     content = download_contents(row['files'], supported_languages)
-
-    repo_name = row['repo_name'].replace('/', '_')
-
-
-    if os.path.exists(f"{output_dir}/{repo_name}.json"):
-        print(f"{output_dir}/{repo_name}.json skipped")
-        continue
-    with open(f"{output_dir}/{repo_name}.json", 'w') as f:
         
-        row['files'] = content['files']
-        string_data = json.dumps(serialize_data(row))
-        f.write(string_data)
+    row['files'] = content['files']
+    string_data = json.dumps(row)
+    f.write(string_data+"\n")
     
     if language_count[row['gha_language']] > MAX_LIMIT:
         break
-
-
-
-
-
-
-
-
-
-
-
-
-# for teaching aashish only 
-
-# for i, row in enumerate(ds):
-#     print(row['gha_language'])
-#     # if i == 0 or row['gha_language'] != 'Python':
-#     #     continue
-#     if i == MAX_LIMIT:
-#         break
-#     continue
-#     # remove the "files" key from the metadata as individiual file will have it
-#     files = download_contents(row['files'])['files']
-
-#     # for key, value in row.items():
-#     #     print(f"{key}: {type(value)}")
-#     with open(f"code.txt", 'a') as f:
-#         for file in files:
-
-#             code_content = "<file_sep>\n"+ file['content'] + "<|endoftext|>"
-#             # string_data = json.dumps(code_content)
-#             f.write(code_content)
     
-#     if i == MAX_LIMIT:
-#         break
+f.close()
+
