@@ -38,11 +38,11 @@ def process_dataset(ds, supported_languages, output_dir, max_threads=5, max_limi
             futures = []
             for i, row in enumerate(ds):
                 # Skip rows if language limit is reached
-                if language_count[row['gha_language']] > max_limit:
-                    break
+                # if i > max_limit:
+                #     break
                 
                 # Increase the count of processed languages
-                language_count[row['gha_language']] += 1
+                # language_count[row['gha_language']] += 1
 
                 # Submit the processing task to the thread pool
                 futures.append(executor.submit(process_row, i, row, supported_languages, output_file))
@@ -63,10 +63,10 @@ if __name__ == "__main__":
     ds = ds.filter(lambda row: row['gha_language'] in supported_languages)
 
     # Set the output directory
-    output_dir = "./python-dataset"
+    output_dir = "./new-python-dataset"
 
-    # Set the maximum limit for each language (you can modify this value as needed)
-    MAX_LIMIT = 40000
+    # Set the maximum limit for each language
+    MAX_LIMIT = 100000
 
     # Process the dataset in parallel
-    process_dataset(ds, supported_languages, output_dir, max_threads=10, max_limit=MAX_LIMIT)
+    process_dataset(ds, supported_languages, output_dir, max_threads=16, max_limit=MAX_LIMIT)

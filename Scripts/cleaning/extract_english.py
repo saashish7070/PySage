@@ -14,24 +14,19 @@ base_out_dir = './english'
 # max output size in bytes
 max_sizes = {
     'train': MAX_SIZE, # 4 GB
-    'test': MAX_SIZE // 8,  # 128 MB
-    'validation': MAX_SIZE //8    # 128 MB
+    'test': MAX_SIZE // 8,  # 512 MB
+    'validation': MAX_SIZE //8    # 512 MB
 }
 
 # Base path to your dataset directory
 base_path = 'datasets--cerebras--SlimPajama-627B/snapshots/2d0accdd58c5d5511943ca1f5ff0e3eb5e293543'
 
 # Define the splits
-splits = ['test', 'validation']
+splits = ['train', 'test', 'validation']
 
 # save the data to the file
 def save_data(f, new_data):
     
-    """
-    save new_data to file
-        return = True if successful else false
-    """
-        
     for entry in new_data:
         json_entry = json.dumps(entry)
         f.write(json_entry+'\n')
@@ -66,7 +61,7 @@ def process_split(split_name, out_file):
                 continue
             save_data(f, data)
 
-    f.close()          
+    f.close()
 
             
 
