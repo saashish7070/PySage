@@ -11,8 +11,8 @@ tokenizer = Tokenizer.from_file(tokenizer_path)
 class EnglishDataset(PackedDataset):
 
     def __init__(self, filenames, n_chunks, block_size, tokenizer, **kwargs):
-        self.tokenzier
         super().__init__(filenames, n_chunks, block_size, **kwargs)
+        self.tokenzier=tokenizer
     
     
     def __iter__(self):

@@ -19,3 +19,6 @@ myvenv
 
 # environment variable
 .env
+
+# repositories idre
+repo-id

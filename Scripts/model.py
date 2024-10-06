@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from transformers import PreTrainedModel, PretrainedConfig
 
-# Hyperparameters value #######
+# Hyperparameters value ######
 vocab_size=20256
 batch_size=8
 seq_len=512
@@ -12,7 +12,7 @@ d_model=768
 n_layers=12
 d_ff=d_model * 8 // 3
 n_heads=16
-######################
+##############################
 
 class ModelConfig(PretrainedConfig):
   def __init__(self, vocab_size=vocab_size, d_model=d_model, max_seq_len=seq_len, n_layers=n_layers, d_ff=d_ff, n_heads=n_heads, **kwargs):
@@ -68,6 +68,8 @@ class RMSNorm(nn.Module):
   def forward(self, x):
       norm = x.norm(keepdim=True, dim=-1, p=2)  # RMS norm over last dimension
       return self.weight * (x / (norm + self.eps))
+
+
 
 class SelfAttention(nn.Module):
   def __init__(self, config):
@@ -134,10 +136,10 @@ class FeedForward(nn.Module):
     self.act_fn = nn.SiLU()
 
   def forward(self, x):
-    gate_output = self.act_fn(self.gate_proj(x))
-    up_output = self.up_proj(x)
-    intermediate_output = gate_output * up_output
-    return self.down_proj(intermediate_output)
+    gate_output = self.act_fn(self.gate_proj(x))  # (batch_size, seq_len, d_ff)
+    up_output = self.up_proj(x)                   # (batch_size, seq_len, d_ff)
+    intermediate_output = gate_output * up_output # (batch_size, seq_len, d_ff)
+    return self.down_proj(intermediate_output)    # (batch_size, seq_len, d_model)
 
 class Layer(nn.Module):
   def __init__(self, config):
@@ -158,10 +160,16 @@ class Layer(nn.Module):
 class Model(PreTrainedModel):
   def __init__(self, config):
     super().__init__(config)
+    self.config=config
     self.embedding = nn.Embedding(config.vocab_size, config.d_model) # (vocab_size, d_model)
     self.layers = nn.ModuleList([Layer(config) for _ in range(config.n_layers)])
     self.final_layer_norm = RMSNorm(config.d_model)
     self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False) # ( d_model, vocab_size)
+
+  def _init_weights(self, module: nn.Module, n_layer) -> None:
+        if isinstance(module, (nn.Embedding, nn.Linear)):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
 
   def forward(self, input_ids, attention_mask=None): # input_ids -> (batch_size, seq_len)
     B, T = input_ids.shape  # B -> Batch size, T -> Seq Len
