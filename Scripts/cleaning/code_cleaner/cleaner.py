@@ -5,7 +5,8 @@ import sys
 from typing import List, Dict, Any, Generator
 import json
 import logging
-
+from io import StringIO
+import shutil
 
 
 # Count number of leading blanks.
@@ -42,7 +43,6 @@ def _rstrip(line, JUNK='\n \t'):
     while i > 0 and line[i - 1] in JUNK:
         i -= 1
     return line[:i]
-
 
 class Reindenter:
     def __init__(self):
@@ -136,7 +136,7 @@ class Reindenter:
                     else:
                         remove = min(getlspace(line), -diff)
                         after.append(line[remove:])
-        return self.after
+        return "".join(self.after)
 
 
 
@@ -232,45 +232,12 @@ def write_repos(repos: List[str], output_path: str):
         repos (List[str]): Repository names
         output_path (str): Path to output file
     """
+
+
     with open(output_path, 'a') as f:
         for repo in repos:
             f.write(json.dumps(repo) + '\n')
 
-def process_task(idx, file_path, output_path, file_prefix ):
-    generator = load_data(file_path, 0, 2000)
-    for repos in generator:
-        reindented_repos = []
-        for repo in repos:
-            reindented_files = []
-            try:
-                for file in repo['files']:
-                    reindented_code = r.run(file['content'], SPACE_PER_INDENT)
-
-                    file['content'] = reindented_code
-                
-                    reindented_files.append(file)
-                
-                repo['files'] = reindented_files
-                    
-            except Exception as e:
-                    logging.error(f"Error while reindenting file {file_path}  repo_name: {repo['repo_name']}: {e}")
-                    # print(f"Cannot reindnent file {file_path} with repo  name {repo['repo_name']}")
-                    with open(f'original_{idx}.py', 'w') as o,\
-                        open(f'cleaned_{idx}.py', 'w') as c:
-
-                        original_content = to_original(file_path, repo['repo_name'], file['path'])
-
-                        o.write(original_content)
-                        c.write(file['content'])
-                    # print(file['content'])
-                    return
-
-
-            # repo['files'] = reindented_files
-
-            reindented_repos.append(repo)
-
-        write_repos(reindented_repos, os.path.join(output_path, f"{file_prefix}_{idx}.jsonl"))
 
 def to_original(cleaned_file_name, repo_name, file_path):
     original_dir = './new-python-dataset/syntax_free_repos'
@@ -298,26 +265,168 @@ def to_original(cleaned_file_name, repo_name, file_path):
                 if file['path'] == file_path:
                     return file['content']
 
+def is_english(s: str) -> bool:
+    """
+    Detect if s contains non-English characters (ASCII > 127).
 
-r = Reindenter()
+    Parameters:
+        s (str): Input string.
+
+    Returns:
+        bool: True if the string contains only English characters, False otherwise.
+    """
+    return not any(ord(char) > 127 for char in s)
+
+def normalize_string(s: str) -> str:
+    """
+    Converts single-quoted strings to double-quoted strings.
+
+    Parameters:
+        s (str): Input string.
+
+    Returns:
+        str: Normalized string.
+    """
+    is_triple = len(s) >= 6 and (s[:3] == '"""' or s[:3] == "'''")
+
+    if not is_english(s):
+        return '"""<NON ENGLISH STRING>"""' if is_triple else '"<NON ENGLISH STRING>"'
+
+    if is_triple:
+        return '"""' + s[3:-3] + '"""'
+    
+    return '"' + s[1:-1] + '"'
+
+def normalize_code(code: str) -> str:
+    """
+    Cleans and normalizes Python code.
+
+    Parameters:
+        code (str): Input Python code.
+
+    Returns:
+        str: Processed Python code with normalized strings, filtered comments, 
+             and consistent spacing.
+    """
+    tokens = tokenize.generate_tokens(StringIO(code).readline)
+    buffer = []  # Buffer to handle spaces or line breaks properly
+    prev_end = (0, 0)
+    for token in tokens:
+        
+
+        if  prev_end[0] == token.start[0]: # The tokens lie on the same line
+            token = token._replace(start = (token.start[0], min(prev_end[1] + 2, token.start[1])))
+        if token.type == tokenize.STRING:
+            # Normalize strings
+            new_token = token._replace(string=normalize_string(token.string))
+            buffer.append(new_token)
+        elif token.type == tokenize.COMMENT:
+            # Filter comments with non-English characters
+            if is_english(token.string):
+                buffer.append(token)
+        else:
+            # Include other tokens as-is
+            buffer.append(token)
+        
+        prev_end = token.end
+    return tokenize.untokenize(buffer)
+
+def task_process(idx,code_file,  out_dir, prefix, lock):
+    out_file =os.path.join(out_dir, f'{prefix}_{idx}.jsonl')
+    data_loader = load_data(code_file)
+    r = Reindenter()
+    for chunk in data_loader:
+        # cleaned_repos = []
+        for repo in chunk:
+            files = []  # Stores the cleaned files
+            try:
+                for file in repo['files']:
+                    code = r.run(file['content'], SPACE_PER_INDENT)
+                    code = normalize_code(code)
+
+                    files.append(file)
+                
+                repo['files'] = files
+
+
+            except Exception as e:
+                with lock:
+                    with open("errors.jsonl", 'a') as f:
+                        f.write(json.dumps(repo) + '\n')
+
+
+
+        
+        write_repos(chunk, out_file)
+
+
+def test ():
+    code = """
+def       hello_world():
+    x =     'single quoted string'
+    y = '''triple
+    quoted
+    string'''
+    # This is an example comment
+    # 中文注释 (Non-English comment)
+    if True:
+        print('hello world')
+    return  x            + y
+    
+"""
+    r = Reindenter()
+
+    code = r.run(r, SPACE_PER_INDENT)
+    code = normalize_code(code)
+    print(code)
+
+
+
 SPACE_PER_INDENT=4
-if __name__ == '__main__':
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO, 
-        format='%(asctime)s - %(levelname)s: %(message)s',
-        handlers=[
-            logging.FileHandler('reindent.log'),
-            logging.StreamHandler()
-        ]
-    )
-    inDir = './new-python-dataset/cleaned_data/'
-    outDir = './code-data/'
+# Example usage:
+if __name__ == "__main__":
 
-    files = os.listdir(inDir)
+    code_path = './new-python-dataset/syntax_free_repos'
+    out_dir = './code-data'
+    files = os.listdir(code_path)
+    num_workers = min(mp.cpu_count(), len(files))
 
-    num_workes = min(mp.cpu_count(), len(files))
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
+    
+    os.mkdir(out_dir)
+    with mp.Manager() as manager:
+        lock = manager.Lock()
+
+        with mp.Pool(processes=num_workers) as pool:
+            pool.starmap(task_process, [(i, os.path.join(code_path, file), out_dir, 'data', lock) for i, file in enumerate(files)])
+
+
+
+
+
+
+
+
+
+# r = Reindenter()
+# if __name__ == '__main__':
+#     # Configure logging
+#     logging.basicConfig(
+#         level=logging.INFO, 
+#         format='%(asctime)s - %(levelname)s: %(message)s',
+#         handlers=[
+#             logging.FileHandler('reindent.log'),
+#             logging.StreamHandler()
+#         ]
+#     )
+#     inDir = './new-python-dataset/cleaned_data/'
+#     outDir = './code-data/'
+
+#     files = os.listdir(inDir)
+
+#     num_workes = min(mp.cpu_count(), len(files))
     
     
-    with mp.Pool(processes=num_workes) as pool:
-        pool.starmap(process_task, [(i, os.path.join(inDir, file), outDir, "code") for i, file in enumerate(files)])
+#     with mp.Pool(processes=num_workes) as pool:
+#         pool.starmap(process_task, [(i, os.path.join(inDir, file), outDir, "code") for i, file in enumerate(files)])
