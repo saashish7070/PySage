@@ -21,6 +21,9 @@ HDR_SIZE = 24  # bytes
 
 
 class PackedDataset(IterableDataset):
+    """
+    Dataset class
+    """
     def __init__(
         self, filenames, n_chunks, block_size, seed=12345, shuffle=True, wrap=False, num_processes=1, process_rank=0
     ):

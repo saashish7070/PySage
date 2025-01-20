@@ -8,7 +8,6 @@ import logging
 from io import StringIO
 import shutil
 
-
 # Count number of leading blanks.
 def getlspace(line):
     i, n = 0, len(line)
@@ -400,33 +399,3 @@ if __name__ == "__main__":
 
         with mp.Pool(processes=num_workers) as pool:
             pool.starmap(task_process, [(i, os.path.join(code_path, file), out_dir, 'data', lock) for i, file in enumerate(files)])
-
-
-
-
-
-
-
-
-
-# r = Reindenter()
-# if __name__ == '__main__':
-#     # Configure logging
-#     logging.basicConfig(
-#         level=logging.INFO, 
-#         format='%(asctime)s - %(levelname)s: %(message)s',
-#         handlers=[
-#             logging.FileHandler('reindent.log'),
-#             logging.StreamHandler()
-#         ]
-#     )
-#     inDir = './new-python-dataset/cleaned_data/'
-#     outDir = './code-data/'
-
-#     files = os.listdir(inDir)
-
-#     num_workes = min(mp.cpu_count(), len(files))
-    
-    
-#     with mp.Pool(processes=num_workes) as pool:
-#         pool.starmap(process_task, [(i, os.path.join(inDir, file), outDir, "code") for i, file in enumerate(files)])
