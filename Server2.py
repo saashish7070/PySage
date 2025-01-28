@@ -18,7 +18,8 @@ def download_and_save_model(model_name, local_dir):
 
 # Define model details
 model_name = "codeparrot/codeparrot-small"
-local_dir = "./codeparrot-model"
+# model_name = "codeparrot/codeparrot-small-text-to-code"                                              
+local_dir = "./models/codeparrot-model-text"
 
 # Download and save the model locally
 download_and_save_model(model_name, local_dir)
@@ -60,6 +61,7 @@ def generate():
 
         # Decode output
         response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        print(response)
         return jsonify({"response": response})
 
     except Exception as e:
