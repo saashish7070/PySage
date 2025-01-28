@@ -23,5 +23,5 @@ myvenv
 
 # repositories idre
 repo-id
-# for javascript
-node_modules
+
+models
