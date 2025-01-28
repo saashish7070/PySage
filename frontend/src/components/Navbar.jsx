@@ -18,6 +18,9 @@ const Navbar = () => {
           <Link to="/blog" className="text-white hover:text-gray-300">
             Blog
           </Link>
+          <Link to="/websocket" className="text-white hover:text-gray-300">
+            Websocket
+          </Link>
         </div>
       </div>
     </nav>
